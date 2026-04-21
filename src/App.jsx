@@ -4,10 +4,10 @@ import remarkGfm from 'remark-gfm'
 import './App.css'
 
 const AGENTS = [
-  { id: 'planner',     label: 'Planner',     emoji: '🗂️', color: '#00e5a0', what: 'Breaks your question into focused sub-tasks',    doing: 'Breaking down your question...' },
-  { id: 'researcher',  label: 'Researcher',  emoji: '🔍', color: '#4da6ff', what: 'Searches the web and summarizes findings',        doing: 'Searching the web...' },
-  { id: 'critic',      label: 'Critic',      emoji: '🧐', color: '#f5a623', what: 'Reviews quality and identifies gaps',             doing: 'Checking research quality...' },
-  { id: 'synthesizer', label: 'Synthesizer', emoji: '✍️', color: '#c77dff', what: 'Writes your final structured report',            doing: 'Writing your report...' },
+  { id: 'planner',     label: 'Planner',     emoji: '🗂️', color: '#00e5a0', what: 'Breaks your question into focused sub-tasks',  doing: 'Breaking down your question...' },
+  { id: 'researcher',  label: 'Researcher',  emoji: '🔍', color: '#4da6ff', what: 'Searches the web and summarizes findings',      doing: 'Searching the web...' },
+  { id: 'critic',      label: 'Critic',      emoji: '🧐', color: '#f5a623', what: 'Reviews quality and identifies gaps',           doing: 'Checking research quality...' },
+  { id: 'synthesizer', label: 'Synthesizer', emoji: '✍️', color: '#c77dff', what: 'Writes your final structured report',          doing: 'Writing your report...' },
 ]
 
 const PHASE_ORDER = ['planner', 'researcher', 'critic', 'synthesizer']
@@ -19,6 +19,99 @@ const EXAMPLES    = [
   'How do multi-agent AI systems work?',
 ]
 
+// ── History helpers ───────────────────────────────────────────
+const HISTORY_KEY = 'autoresearch_history'
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] }
+}
+
+function saveToHistory(entry) {
+  const history = loadHistory()
+  const updated = [entry, ...history].slice(0, 20) // keep last 20
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
+  return updated
+}
+
+function deleteFromHistory(id) {
+  const history = loadHistory().filter(h => h.id !== id)
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history))
+  return history
+}
+
+// ── PDF Export ────────────────────────────────────────────────
+function downloadPDF(query, report, sources) {
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  // Convert markdown to simple HTML for print
+  const reportHtml = report
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/^(?!<[hul])/gm, '')
+
+  const sourcesHtml = sources.slice(0, 20).map((s, i) =>
+    `<div class="source"><span class="src-num">${i + 1}</span><div><div class="src-title">${s.title}</div><div class="src-url">${s.url}</div></div></div>`
+  ).join('')
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${query}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Georgia, serif; font-size: 13px; line-height: 1.8; color: #1a1a1a; max-width: 780px; margin: 0 auto; padding: 60px 50px; }
+  .cover { border-bottom: 2px solid #000; padding-bottom: 30px; margin-bottom: 40px; }
+  .brand { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #666; margin-bottom: 20px; }
+  .cover h1 { font-size: 26px; font-weight: 700; line-height: 1.25; margin-bottom: 12px; }
+  .meta { font-family: Arial, sans-serif; font-size: 11px; color: #888; }
+  h1 { font-size: 22px; font-weight: 700; margin: 36px 0 12px; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px; }
+  h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #007a5a; margin: 28px 0 8px; }
+  h3 { font-size: 14px; font-weight: 700; margin: 20px 0 6px; }
+  p { margin-bottom: 12px; }
+  ul { padding-left: 20px; margin-bottom: 12px; }
+  li { margin-bottom: 4px; }
+  strong { font-weight: 700; }
+  .sources-section { margin-top: 40px; border-top: 2px solid #000; padding-top: 24px; }
+  .sources-section h2 { font-size: 14px; color: #000; margin-bottom: 16px; }
+  .source { display: flex; gap: 12px; margin-bottom: 10px; align-items: flex-start; }
+  .src-num { font-family: Arial, sans-serif; font-size: 10px; color: #888; min-width: 20px; margin-top: 2px; }
+  .src-title { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  .src-url { font-size: 10px; color: #888; word-break: break-all; }
+  @media print { body { padding: 40px; } }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="brand">⬡ AutoResearch · AI Research Report</div>
+    <h1>${query}</h1>
+    <div class="meta">Generated ${date} · ${sources.length} sources · autoresearch-ai-three.vercel.app</div>
+  </div>
+  <div class="report-content">${reportHtml}</div>
+  <div class="sources-section">
+    <h2>Sources (${sources.length})</h2>
+    ${sourcesHtml}
+  </div>
+</body>
+</html>`
+
+  const blob = new Blob([html], { type: 'text/html' })
+  const url  = URL.createObjectURL(blob)
+  const win  = window.open(url, '_blank')
+  if (win) {
+    win.onload = () => {
+      win.print()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    }
+  }
+}
+
+// ── Sub-components ────────────────────────────────────────────
 function ProgressBar({ agentPhase, complete }) {
   const idx = PHASE_ORDER.indexOf(PHASE_MAP[agentPhase] || 'planner')
   const pct = complete ? 100 : Math.round(((idx + 0.5) / 4) * 100)
@@ -67,6 +160,36 @@ function LogFeed({ logs }) {
   )
 }
 
+function HistoryPanel({ history, onSelect, onDelete, onClose }) {
+  if (!history.length) return (
+    <div className="history-panel">
+      <div className="history-header">
+        <span className="history-title">Research History</span>
+        <button className="history-close" onClick={onClose}>✕</button>
+      </div>
+      <div className="history-empty">No research yet. Your completed reports will appear here.</div>
+    </div>
+  )
+  return (
+    <div className="history-panel">
+      <div className="history-header">
+        <span className="history-title">Research History</span>
+        <button className="history-close" onClick={onClose}>✕</button>
+      </div>
+      <div className="history-list">
+        {history.map(h => (
+          <div key={h.id} className="history-item" onClick={() => onSelect(h)}>
+            <div className="history-query">{h.query}</div>
+            <div className="history-meta">{h.date} · {h.wordCount} words · {h.sourceCount} sources</div>
+            <button className="history-delete" onClick={e => { e.stopPropagation(); onDelete(h.id) }}>✕</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Main App ──────────────────────────────────────────────────
 export default function App() {
   const [query, setQuery]           = useState('')
   const [phase, setPhase]           = useState('idle')
@@ -78,6 +201,9 @@ export default function App() {
   const [iterations, setIterations] = useState(0)
   const [error, setError]           = useState('')
   const [tab, setTab]               = useState('agents')
+  const [history, setHistory]       = useState(loadHistory)
+  const [showHistory, setShowHistory] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   const getStatus = (id) => {
     if (phase === 'idle') return 'idle'
@@ -108,6 +234,19 @@ export default function App() {
         setTasks(ev.data.tasks || [])
         setIterations(ev.data.iterations || 0)
         setPhase('complete'); setAgentPhase('complete'); setTab('report')
+        // Save to history
+        const entry = {
+          id: Date.now().toString(),
+          query: query.trim(),
+          report: ev.data.report || '',
+          sources: ev.data.sources || [],
+          tasks: ev.data.tasks || [],
+          iterations: ev.data.iterations || 0,
+          date: new Date().toLocaleDateString(),
+          wordCount: (ev.data.report || '').split(' ').length,
+          sourceCount: (ev.data.sources || []).length,
+        }
+        setHistory(saveToHistory(entry))
         break
       case 'error': setError(ev.data.message); setPhase('error'); break
     }
@@ -118,9 +257,14 @@ export default function App() {
     setPhase('running'); setAgentPhase('planning')
     setLogs([]); setTasks([]); setReport(''); setSources([])
     setIterations(0); setError(''); setTab('agents')
+    setShowHistory(false)
 
     try {
-      const res = await fetch('/research/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: query.trim() }) })
+      const res = await fetch('/research/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim() }),
+      })
       const reader = res.body.getReader()
       const dec = new TextDecoder()
       let buf = ''
@@ -136,18 +280,49 @@ export default function App() {
       }
     } catch {
       try {
-        const res  = await fetch('/research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: query.trim() }) })
+        const res  = await fetch('/research', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query.trim() }),
+        })
         const data = await res.json()
-        setLogs(data.logs || []); setTasks(data.tasks || []); setReport(data.report || '')
-        setSources(data.sources || []); setIterations(data.iterations || 0)
-        setAgentPhase('complete'); setPhase('complete'); setTab('report')
+        const ev = { type: 'complete', data }
+        setLogs(data.logs || [])
+        setTasks(data.tasks || [])
+        handleEvent(ev)
       } catch (e) { setError(e.message); setPhase('error') }
     }
+  }
+
+  const loadHistoryItem = (item) => {
+    setQuery(item.query)
+    setReport(item.report)
+    setSources(item.sources)
+    setTasks(item.tasks)
+    setIterations(item.iterations)
+    setLogs([])
+    setPhase('complete')
+    setAgentPhase('complete')
+    setTab('report')
+    setShowHistory(false)
+  }
+
+  const handleDeleteHistory = (id) => {
+    setHistory(deleteFromHistory(id))
+  }
+
+  const handlePDF = () => {
+    setPdfLoading(true)
+    setTimeout(() => {
+      downloadPDF(query, report, sources)
+      setPdfLoading(false)
+    }, 100)
   }
 
   const reset = () => {
     setPhase('idle'); setAgentPhase(''); setLogs([]); setTasks([])
     setReport(''); setSources([]); setError(''); setQuery(''); setTab('agents')
+    setShowHistory(false)
   }
 
   const running  = phase === 'running'
@@ -155,7 +330,6 @@ export default function App() {
 
   return (
     <div className="app">
-
       {/* Header */}
       <header className="hdr">
         <div className="hdr-left">
@@ -163,10 +337,27 @@ export default function App() {
           <span className="brand-name">AutoResearch</span>
           <span className="brand-tag">Multi-Agent AI</span>
         </div>
-        {phase !== 'idle' && <button className="btn-ghost" onClick={reset}>← New research</button>}
+        <div className="hdr-right">
+          {history.length > 0 && (
+            <button className={`btn-ghost ${showHistory ? 'active' : ''}`} onClick={() => setShowHistory(v => !v)}>
+              🕐 History ({history.length})
+            </button>
+          )}
+          {phase !== 'idle' && <button className="btn-ghost" onClick={reset}>← New research</button>}
+        </div>
       </header>
 
-      {/* ── IDLE: hero screen ── */}
+      {/* History panel overlay */}
+      {showHistory && (
+        <HistoryPanel
+          history={history}
+          onSelect={loadHistoryItem}
+          onDelete={handleDeleteHistory}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
+      {/* ── IDLE ── */}
       {phase === 'idle' && (
         <div className="hero">
           <div className="hero-inner">
@@ -176,8 +367,6 @@ export default function App() {
               Ask any question. Four AI agents collaborate — planning, searching,
               fact-checking, and writing — to deliver a comprehensive cited report.
             </p>
-
-            {/* How it works */}
             <div className="how-strip">
               {AGENTS.map((a, i) => (
                 <div key={a.id} className="how-step">
@@ -187,13 +376,10 @@ export default function App() {
                 </div>
               ))}
             </div>
-
-            {/* Input */}
             <div className="input-card">
               <label className="input-label">Your research question</label>
               <textarea
-                className="q-input"
-                rows={3}
+                className="q-input" rows={3}
                 placeholder="e.g. What are the latest breakthroughs in AI agents?"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
@@ -201,12 +387,9 @@ export default function App() {
               />
               <div className="input-footer">
                 <span className="input-hint">Tip: Ctrl + Enter to run</span>
-                <button className="btn-run" onClick={run} disabled={!query.trim()}>
-                  Run Research →
-                </button>
+                <button className="btn-run" onClick={run} disabled={!query.trim()}>Run Research →</button>
               </div>
             </div>
-
             <div className="examples">
               <span className="ex-label">Try an example:</span>
               {EXAMPLES.map(q => (
@@ -217,24 +400,20 @@ export default function App() {
         </div>
       )}
 
-      {/* ── RUNNING / COMPLETE: workspace ── */}
+      {/* ── WORKSPACE ── */}
       {phase !== 'idle' && (
         <div className="workspace">
-
-          {/* Sidebar */}
           <aside className="sidebar">
             <div className="sb-section">
               <div className="sb-label">Your question</div>
               <div className="sb-query">{query}</div>
             </div>
-
             {running && (
               <div className="sb-section">
                 <div className="sb-label">Overall progress</div>
                 <ProgressBar agentPhase={agentPhase} complete={false} />
               </div>
             )}
-
             <div className="sb-section">
               <div className="sb-label">What each agent is doing</div>
               <div className="agent-list">
@@ -243,16 +422,15 @@ export default function App() {
                 ))}
               </div>
             </div>
-
             {complete && (
               <div className="sb-section">
                 <div className="sb-label">Report stats</div>
                 <div className="stat-grid">
                   {[
                     { n: report.split(' ').length, l: 'words' },
-                    { n: sources.length, l: 'sources' },
-                    { n: tasks.length,   l: 'sub-tasks' },
-                    { n: iterations,     l: 'review loops' },
+                    { n: sources.length,           l: 'sources' },
+                    { n: tasks.length,             l: 'sub-tasks' },
+                    { n: iterations,               l: 'review loops' },
                   ].map(s => (
                     <div key={s.l} className="stat-box">
                       <span className="stat-n">{s.n}</span>
@@ -260,11 +438,14 @@ export default function App() {
                     </div>
                   ))}
                 </div>
+                {/* PDF Download button */}
+                <button className="btn-pdf" onClick={handlePDF} disabled={pdfLoading}>
+                  {pdfLoading ? '⏳ Preparing...' : '⬇ Download PDF'}
+                </button>
               </div>
             )}
           </aside>
 
-          {/* Main */}
           <main className="main">
             <div className="tabs">
               <button className={`tab ${tab === 'agents' ? 'tab-on' : ''}`} onClick={() => setTab('agents')}>
@@ -282,29 +463,16 @@ export default function App() {
             </div>
 
             <div className="tab-body">
-
               {tab === 'agents' && (
                 <div>
-                  {running && (
-                    <div className="live-banner">
-                      <span className="live-dot" /> Agents are working — new activity streams in automatically
-                    </div>
-                  )}
-                  {complete && (
-                    <div className="done-banner">
-                      ✓ Research complete — switch to the Report tab to read your results
-                    </div>
-                  )}
+                  {running && <div className="live-banner"><span className="live-dot" /> Agents are working — new activity streams in automatically</div>}
+                  {complete && <div className="done-banner">✓ Research complete — switch to the Report tab to read your results</div>}
                   <LogFeed logs={logs} />
                 </div>
               )}
-
               {tab === 'tasks' && (
                 <div className="task-section">
-                  <p className="tab-intro">
-                    The Planner broke your question into {tasks.length} focused sub-questions
-                    for the Researcher to investigate independently:
-                  </p>
+                  <p className="tab-intro">The Planner broke your question into {tasks.length} focused sub-questions:</p>
                   {tasks.map((t, i) => (
                     <div key={t.id} className={`task-card ${t.status === 'done' ? 'task-done' : ''}`}>
                       <span className="task-n">{i + 1}</span>
@@ -314,31 +482,28 @@ export default function App() {
                   ))}
                 </div>
               )}
-
               {tab === 'report' && report && (
                 <div className="report-wrap">
-                  <div className="report-meta">
-                    AI-generated research report · {report.split(' ').length} words · {sources.length} sources cited
+                  <div className="report-meta-bar">
+                    <span>AI-generated · {report.split(' ').length} words · {sources.length} sources</span>
+                    <button className="btn-pdf-inline" onClick={handlePDF} disabled={pdfLoading}>
+                      {pdfLoading ? 'Preparing...' : '⬇ Download PDF'}
+                    </button>
                   </div>
                   <div className="report-body">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
                   </div>
                 </div>
               )}
-
               {tab === 'report' && !report && (
                 <div className="empty-state">
                   <div className="spinner" />
                   <p>Your report will appear here when all agents finish...</p>
                 </div>
               )}
-
               {tab === 'sources' && (
                 <div className="sources-section">
-                  <p className="tab-intro">
-                    {sources.length} web sources were found and used to build your report.
-                    Click any to read the original:
-                  </p>
+                  <p className="tab-intro">{sources.length} web sources used to build your report:</p>
                   {sources.map((s, i) => (
                     <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="src-row">
                       <span className="src-i">{i + 1}</span>
@@ -351,11 +516,10 @@ export default function App() {
                   ))}
                 </div>
               )}
-
               {phase === 'error' && (
                 <div className="error-box">
                   <div className="error-title">Something went wrong</div>
-                  <div className="error-msg">{error || 'Could not connect to the backend. Make sure python run.py is still running in your other terminal.'}</div>
+                  <div className="error-msg">{error || 'Could not connect to the backend. Make sure python run.py is still running.'}</div>
                 </div>
               )}
             </div>
