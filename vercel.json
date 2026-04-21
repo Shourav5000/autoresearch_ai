@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/research/:path*",
+      "destination": "https://autoresearch-ai-4xka.onrender.com/research/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://autoresearch-ai-4xka.onrender.com/health"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
