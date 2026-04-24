@@ -28,7 +28,7 @@ function loadHistory() {
 
 function saveToHistory(entry) {
   const history = loadHistory()
-  const updated = [entry, ...history].slice(0, 20) // keep last 20
+  const updated = [entry, ...history].slice(0, 20)
   localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
   return updated
 }
@@ -43,7 +43,6 @@ function deleteFromHistory(id) {
 function downloadPDF(query, report, sources) {
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
-  // Convert markdown to simple HTML for print
   const reportHtml = report
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -189,6 +188,22 @@ function HistoryPanel({ history, onSelect, onDelete, onClose }) {
   )
 }
 
+// ── Mobile Sidebar Drawer ─────────────────────────────────────
+function SidebarDrawer({ onClose, children }) {
+  return (
+    <div className="sidebar-drawer">
+      <div className="sidebar-drawer-backdrop" onClick={onClose} />
+      <div className="sidebar-drawer-panel">
+        <div className="drawer-header">
+          <span className="drawer-title">Research Status</span>
+          <button className="drawer-close" onClick={onClose}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 // ── Main App ──────────────────────────────────────────────────
 export default function App() {
   const [query, setQuery]           = useState('')
@@ -204,6 +219,7 @@ export default function App() {
   const [history, setHistory]       = useState(loadHistory)
   const [showHistory, setShowHistory] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [showDrawer, setShowDrawer] = useState(false)
 
   const getStatus = (id) => {
     if (phase === 'idle') return 'idle'
@@ -234,7 +250,6 @@ export default function App() {
         setTasks(ev.data.tasks || [])
         setIterations(ev.data.iterations || 0)
         setPhase('complete'); setAgentPhase('complete'); setTab('report')
-        // Save to history
         const entry = {
           id: Date.now().toString(),
           query: query.trim(),
@@ -257,7 +272,7 @@ export default function App() {
     setPhase('running'); setAgentPhase('planning')
     setLogs([]); setTasks([]); setReport(''); setSources([])
     setIterations(0); setError(''); setTab('agents')
-    setShowHistory(false)
+    setShowHistory(false); setShowDrawer(false)
 
     try {
       const res = await fetch('/research/stream', {
@@ -322,11 +337,56 @@ export default function App() {
   const reset = () => {
     setPhase('idle'); setAgentPhase(''); setLogs([]); setTasks([])
     setReport(''); setSources([]); setError(''); setQuery(''); setTab('agents')
-    setShowHistory(false)
+    setShowHistory(false); setShowDrawer(false)
   }
 
   const running  = phase === 'running'
   const complete = phase === 'complete'
+
+  // Shared sidebar content (used in both desktop sidebar and mobile drawer)
+  const SidebarContent = () => (
+    <>
+      <div className="sb-section">
+        <div className="sb-label">Your question</div>
+        <div className="sb-query">{query}</div>
+      </div>
+      {running && (
+        <div className="sb-section">
+          <div className="sb-label">Overall progress</div>
+          <ProgressBar agentPhase={agentPhase} complete={false} />
+        </div>
+      )}
+      <div className="sb-section">
+        <div className="sb-label">What each agent is doing</div>
+        <div className="agent-list">
+          {AGENTS.map(a => (
+            <AgentRow key={a.id} agent={a} status={getStatus(a.id)} lastLog={lastLog(a.id)} />
+          ))}
+        </div>
+      </div>
+      {complete && (
+        <div className="sb-section">
+          <div className="sb-label">Report stats</div>
+          <div className="stat-grid">
+            {[
+              { n: report.split(' ').length, l: 'words' },
+              { n: sources.length,           l: 'sources' },
+              { n: tasks.length,             l: 'sub-tasks' },
+              { n: iterations,               l: 'review loops' },
+            ].map(s => (
+              <div key={s.l} className="stat-box">
+                <span className="stat-n">{s.n}</span>
+                <span className="stat-l">{s.l}</span>
+              </div>
+            ))}
+          </div>
+          <button className="btn-pdf" onClick={handlePDF} disabled={pdfLoading}>
+            {pdfLoading ? '⏳ Preparing...' : '⬇ Download PDF'}
+          </button>
+        </div>
+      )}
+    </>
+  )
 
   return (
     <div className="app">
@@ -343,7 +403,7 @@ export default function App() {
               🕐 History ({history.length})
             </button>
           )}
-          {phase !== 'idle' && <button className="btn-ghost" onClick={reset}>← New research</button>}
+          {phase !== 'idle' && <button className="btn-ghost" onClick={reset}>← New</button>}
         </div>
       </header>
 
@@ -391,7 +451,7 @@ export default function App() {
               </div>
             </div>
             <div className="examples">
-              <span className="ex-label">Try an example:</span>
+              <span className="ex-label">Try:</span>
               {EXAMPLES.map(q => (
                 <button key={q} className="ex-chip" onClick={() => setQuery(q)}>{q}</button>
               ))}
@@ -403,56 +463,41 @@ export default function App() {
       {/* ── WORKSPACE ── */}
       {phase !== 'idle' && (
         <div className="workspace">
+
+          {/* Mobile status bar */}
+          <div className="mobile-status-bar">
+            <span className="mobile-status-query">{query}</span>
+            <div className="mobile-agent-pills">
+              {AGENTS.map(a => (
+                <span key={a.id} className={`mobile-agent-pill ${getStatus(a.id)}`}>
+                  {a.emoji}
+                </span>
+              ))}
+            </div>
+            <button className="sidebar-toggle" onClick={() => setShowDrawer(true)}>
+              Details
+            </button>
+          </div>
+
+          {/* Desktop sidebar */}
           <aside className="sidebar">
-            <div className="sb-section">
-              <div className="sb-label">Your question</div>
-              <div className="sb-query">{query}</div>
-            </div>
-            {running && (
-              <div className="sb-section">
-                <div className="sb-label">Overall progress</div>
-                <ProgressBar agentPhase={agentPhase} complete={false} />
-              </div>
-            )}
-            <div className="sb-section">
-              <div className="sb-label">What each agent is doing</div>
-              <div className="agent-list">
-                {AGENTS.map(a => (
-                  <AgentRow key={a.id} agent={a} status={getStatus(a.id)} lastLog={lastLog(a.id)} />
-                ))}
-              </div>
-            </div>
-            {complete && (
-              <div className="sb-section">
-                <div className="sb-label">Report stats</div>
-                <div className="stat-grid">
-                  {[
-                    { n: report.split(' ').length, l: 'words' },
-                    { n: sources.length,           l: 'sources' },
-                    { n: tasks.length,             l: 'sub-tasks' },
-                    { n: iterations,               l: 'review loops' },
-                  ].map(s => (
-                    <div key={s.l} className="stat-box">
-                      <span className="stat-n">{s.n}</span>
-                      <span className="stat-l">{s.l}</span>
-                    </div>
-                  ))}
-                </div>
-                {/* PDF Download button */}
-                <button className="btn-pdf" onClick={handlePDF} disabled={pdfLoading}>
-                  {pdfLoading ? '⏳ Preparing...' : '⬇ Download PDF'}
-                </button>
-              </div>
-            )}
+            <SidebarContent />
           </aside>
+
+          {/* Mobile drawer */}
+          {showDrawer && (
+            <SidebarDrawer onClose={() => setShowDrawer(false)}>
+              <SidebarContent />
+            </SidebarDrawer>
+          )}
 
           <main className="main">
             <div className="tabs">
               <button className={`tab ${tab === 'agents' ? 'tab-on' : ''}`} onClick={() => setTab('agents')}>
-                {running ? '⚡ Live Activity' : '📋 Agent Log'}
+                {running ? '⚡ Live' : '📋 Log'}
               </button>
               <button className={`tab ${tab === 'tasks' ? 'tab-on' : ''}`} onClick={() => setTab('tasks')} disabled={!tasks.length}>
-                🗂 Sub-Tasks {tasks.length ? `(${tasks.length})` : ''}
+                🗂 Tasks {tasks.length ? `(${tasks.length})` : ''}
               </button>
               <button className={`tab ${tab === 'report' ? 'tab-on' : ''}`} onClick={() => setTab('report')} disabled={!report}>
                 📄 Report {complete ? '✓' : ''}
@@ -465,7 +510,7 @@ export default function App() {
             <div className="tab-body">
               {tab === 'agents' && (
                 <div>
-                  {running && <div className="live-banner"><span className="live-dot" /> Agents are working — new activity streams in automatically</div>}
+                  {running && <div className="live-banner"><span className="live-dot" /> Agents working — activity streams in automatically</div>}
                   {complete && <div className="done-banner">✓ Research complete — switch to the Report tab to read your results</div>}
                   <LogFeed logs={logs} />
                 </div>
