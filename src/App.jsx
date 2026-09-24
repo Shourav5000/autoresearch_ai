@@ -274,8 +274,11 @@ export default function App() {
     setIterations(0); setError(''); setTab('agents')
     setShowHistory(false); setShowDrawer(false)
 
+    // Pull absolute Railway backend URL from environment variable
+    const API_BASE = import.meta.env.VITE_API_URL || ''
+
     try {
-      const res = await fetch('/research/stream', {
+      const res = await fetch(`${API_BASE}/research/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query.trim() }),
@@ -295,7 +298,7 @@ export default function App() {
       }
     } catch {
       try {
-        const res  = await fetch('/research', {
+        const res  = await fetch(`${API_BASE}/research`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: query.trim() }),
@@ -564,7 +567,7 @@ export default function App() {
               {phase === 'error' && (
                 <div className="error-box">
                   <div className="error-title">Something went wrong</div>
-                  <div className="error-msg">{error || 'Could not connect to the backend. Make sure python run.py is still running.'}</div>
+                  <div className="error-msg">{error || 'Could not connect to the backend.'}</div>
                 </div>
               )}
             </div>
